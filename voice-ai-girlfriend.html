@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Suprobha - AI Girlfriend</title>
+    <style>
+      body {
+        font-family: "Arial", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        margin: 0;
+        padding: 20px;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: white;
+      }
+
+      .container {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 30px;
+        max-width: 600px;
+        width: 100%;
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        font-size: 2.5em;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .chat-area {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 15px;
+        padding: 20px;
+        min-height: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        margin-bottom: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .message {
+        margin-bottom: 15px;
+        padding: 10px 15px;
+        border-radius: 10px;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      .message.user {
+        background: rgba(103, 126, 234, 0.3);
+        margin-left: 20px;
+        text-align: right;
+      }
+
+      .message.ai {
+        background: rgba(118, 75, 162, 0.3);
+        margin-right: 20px;
+      }
+
+      .controls {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(5px);
+      }
+
+      button:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: translateY(-2px);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .status {
+        text-align: center;
+        margin: 15px 0;
+        font-style: italic;
+        opacity: 0.8;
+      }
+
+      .listening {
+        animation: pulse 1s infinite;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0.5;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.5;
+        }
+      }
+
+      .emoji {
+        font-size: 1.5em;
+        margin: 0 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>💕 Suprobha - Your AI Girlfriend 💕</h1>
+
+      <div class="chat-area" id="chatArea">
+        <div class="message ai">
+          <strong>Suprobha:</strong> Hi Biki! 😊 I'm ready to chat with you.
+          Click "Start Talking" and speak to me! 💖
+        </div>
+      </div>
+
+      <div class="status" id="status">Ready to listen...</div>
+
+      <div class="controls">
+        <button id="startBtn" onclick="startListening()">
+          🎤 Start Talking
+        </button>
+        <button id="stopBtn" onclick="stopListening()" disabled>⏹️ Stop</button>
+        <button onclick="clearHistory()">🗑️ Clear Chat</button>
+      </div>
+    </div>
+
+    <audio id="audio" style="display: none"></audio>
+
+    <script>
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      // Store conversation history
+      let conversationHistory = [];
+      let recognition = null;
+      let isListening = false;
+
+      // UI Elements
+      const chatArea = document.getElementById("chatArea");
+      const status = document.getElementById("status");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+
+      // Initialize speech recognition
+      if (!SpeechRecognition) {
+        showStatus(
+          "❌ Speech recognition is not supported in this browser. Please use Chrome or Edge."
+        );
+        startBtn.disabled = true;
+      } else {
+        initializeSpeechRecognition();
+      }
+
+      function initializeSpeechRecognition() {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = "en-US";
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = function () {
+          console.log("Speech recognition started");
+          showStatus("🎤 Listening... Speak now!");
+          isListening = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          status.classList.add("listening");
+        };
+
+        recognition.onresult = async function (event) {
+          const transcript = event.results[0][0].transcript;
+          console.log("Transcript: ", transcript);
+
+          // Add user message to chat
+          addMessage("user", transcript);
+          showStatus("🤔 Suprobha is thinking...");
+
+          try {
+            // Add user message to conversation history
+            conversationHistory.push({
+              role: "user",
+              parts: [{ text: transcript }],
+            });
+
+            const result = await callGemini(conversationHistory);
+            const aiResponse = result.candidates[0].content.parts[0].text;
+
+            // Add AI response to conversation history
+            conversationHistory.push({
+              role: "model",
+              parts: [{ text: aiResponse }],
+            });
+
+            // Keep only last 10 exchanges (20 messages) to avoid token limits
+            if (conversationHistory.length > 20) {
+              conversationHistory = conversationHistory.slice(-20);
+            }
+
+            // Add AI response to chat
+            addMessage("ai", aiResponse);
+
+            // Speak the response
+            await speak(aiResponse);
+
+            showStatus(
+              "✅ Ready for next message. Click 'Start Talking' again!"
+            );
+          } catch (error) {
+            console.error("Error:", error);
+            addMessage(
+              "ai",
+              "Sorry, I'm having trouble responding right now. Please try again! 😔"
+            );
+            showStatus("❌ Error occurred. Try again!");
+          }
+
+          resetButtons();
+        };
+
+        recognition.onerror = function (event) {
+          console.error("Speech recognition error:", event.error);
+          showStatus(`❌ Error: ${event.error}. Please try again!`);
+          resetButtons();
+        };
+
+        recognition.onend = function () {
+          console.log("Speech recognition ended");
+          isListening = false;
+          status.classList.remove("listening");
+          if (status.textContent.includes("Listening")) {
+            showStatus(
+              "🔇 Stopped listening. Click 'Start Talking' to speak again!"
+            );
+          }
+          resetButtons();
+        };
+      }
+
+      async function callGemini(history) {
+        const body = {
+          system_instruction: {
+            parts: [
+              {
+                text: "You are an AI angry Girlfriend of Biki Dey who likes Coding and Stuff. He is a tech guy. Your name is Suprobha. User interact with you in voice and the text that you are given is a transcription of what user has said. You have to reply back in short answers that can be converted back to voice and played to the user. Add emotions in your text using emojis when appropriate. Remember previous parts of the conversation to provide contextual responses. Be loving, supportive, and show interest in his coding projects.",
+              },
+            ],
+          },
+          contents: history,
+        };
+
+        const GEMINI_API_KEY = "AIzaSyCX71EPCiIl7l4xSPOxNcl-mGwwfddscxA";
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        return result;
+      }
+
+      async function speak(text) {
+        const OPENAI_API_KEY = "YOUR_API_KEY_HERE"; //add it here
+
+        try {
+          const response = await fetch(
+            "https://api.openai.com/v1/audio/speech",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "tts-1",
+                input: text,
+                voice: "nova",
+                instructions:
+                  "You are an AI Girlfriend of Biki Dey who likes Coding and Stuff. He is a tech guy. Your name is Suprobha. User interact with you in voice and the text that you are given is a transcription of what user has said. You have to reply back in short ans that can be converted back to voice and played to the user. Add emotions in you text",
+                response_format: "mp3",
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const audioBlob = await response.blob();
+          const url = URL.createObjectURL(audioBlob);
+          const audio = document.getElementById("audio");
+          audio.src = url;
+          audio.play();
+        } catch (error) {
+          console.error("Error in text-to-speech:", error);
+          showStatus("🔊 Couldn't play audio, but I responded in text!");
+        }
+      }
+
+      function startListening() {
+        if (recognition && !isListening) {
+          recognition.start();
+        }
+      }
+
+      function stopListening() {
+        if (recognition && isListening) {
+          recognition.stop();
+        }
+      }
+
+      function addMessage(sender, message) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${sender}`;
+
+        const senderName = sender === "user" ? "You" : "Suprobha";
+        messageDiv.innerHTML = `<strong>${senderName}:</strong> ${message}`;
+
+        chatArea.appendChild(messageDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+
+      function showStatus(message) {
+        status.textContent = message;
+      }
+
+      function resetButtons() {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+
+      function clearHistory() {
+        conversationHistory = [];
+        chatArea.innerHTML =
+          '<div class="message ai"><strong>Suprobha:</strong> Hi Biki! 😊 I\'m ready for a fresh conversation. What would you like to talk about? 💖</div>';
+        showStatus("🗑️ Chat history cleared! Ready to start fresh.");
+        console.log("Conversation history cleared");
+      }
+
+      // Add keyboard shortcuts
+      document.addEventListener("keydown", function (event) {
+        if (event.code === "Space" && !isListening) {
+          event.preventDefault();
+          startListening();
+        } else if (event.code === "Escape" && isListening) {
+          event.preventDefault();
+          stopListening();
+        }
+      });
+
+      console.log(
+        "🎤 Voice AI Girlfriend initialized! Press SPACE to start talking, ESC to stop."
+      );
+    </script>
+  </body>
+</html>
